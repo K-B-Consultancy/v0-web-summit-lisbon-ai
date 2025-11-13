@@ -1,82 +1,177 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Send, Sparkles } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
-import Markdown from "react-markdown"
-import { VideoPlayer } from "@/components/video-player"
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Send, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import { VideoPlayer } from "@/components/video-player";
 
 interface VideoPlayerState {
-  talkId: string
-  title: string
-  videoUrl: string
-  startTime?: number
+  talkId: string;
+  title: string;
+  videoUrl: string;
+  startTime?: number;
+}
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  videoPlayer?: VideoPlayerState;
 }
 
 export function ChatInterface() {
-  const [input, setInput] = useState("")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [videoPlayer, setVideoPlayer] = useState<VideoPlayerState | null>(null)
-
-  const { messages, sendMessage, status, error } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
-    onError: (error) => {
-      console.error("[v0] Chat error:", error)
-    },
-  })
-
-  useEffect(() => {
-    console.log("[v0] Chat status:", status)
-  }, [status])
-
-  useEffect(() => {
-    if (error) {
-      console.error("[v0] Chat error state:", error)
-    }
-  }, [error])
-
-  useEffect(() => {
-    console.log("[v0] Messages updated, count:", messages.length)
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1]
-      console.log("[v0] Last message role:", lastMessage.role)
-      console.log("[v0] Last message parts:", lastMessage.parts.length)
-      lastMessage.parts.forEach((part, index) => {
-        console.log(`[v0] Part ${index} type:`, part.type)
-        if (part.type === "text") {
-          console.log(`[v0] Part ${index} text:`, (part as any).text?.substring(0, 100))
-        }
-      })
-    }
-  }, [messages])
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<"database" | "ai" | null>(
+    null
+  );
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || status === "in_progress") return
-    console.log("[v0] Sending message:", input)
-    sendMessage({ text: input })
-    setInput("")
-  }
+  const generateMessageId = () => {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  };
+
+  // Step 1: Fetch data from database
+  const fetchTalksData = async (query: string) => {
+    console.log("[v0] Step 1: Fetching talks data for query:", query);
+
+    try {
+      const response = await fetch("/api/fetch-talks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: query,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log("[v0] Database fetch result:", data);
+      return data;
+    } catch (error) {
+      console.error("[v0] Error fetching talks data:", error);
+      throw error;
+    }
+  };
+
+  // Step 2: Generate AI response with the fetched data
+  const generateAIResponse = async (query: string, talksData: any) => {
+    console.log("[v0] Step 2: Generating AI response with data");
+
+    try {
+      const response = await fetch("/api/generate-response", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: query,
+          talksData: talksData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log("[v0] AI response result:", data);
+
+      if (data.success) {
+        return data.response;
+      } else {
+        throw new Error(data.error || "Failed to generate response");
+      }
+    } catch (error) {
+      console.error("[v0] Error generating AI response:", error);
+      throw error;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userQuery = input.trim();
+    const userMessageId = generateMessageId();
+    const assistantMessageId = generateMessageId();
+
+    // Add user message immediately
+    const userMessage: Message = {
+      id: userMessageId,
+      role: "user",
+      content: userQuery,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      // Step 1: Fetch data from database
+      setLoadingStep("database");
+      console.log("[v0] Starting database fetch...");
+
+      const talksData = await fetchTalksData(userQuery);
+      console.log("[v0] Database fetch completed");
+
+      // Step 2: Generate AI response
+      setLoadingStep("ai");
+      console.log("[v0] Starting AI response generation...");
+
+      const aiResponse = await generateAIResponse(userQuery, talksData);
+      console.log("[v0] AI response completed");
+
+      // Add assistant message
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: aiResponse,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("[v0] Error in chat flow:", error);
+
+      const errorMessage: Message = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: `Sorry, I encountered an error while processing your request: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      setLoadingStep(null);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
+      e.preventDefault();
+      handleSubmit(e);
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
@@ -91,7 +186,8 @@ export function ChatInterface() {
               Ask me anything about Web Summit talks
             </h1>
             <p className="text-zinc-400 text-lg mb-8">
-              I can help you discover talks, learn about speakers, and get insights from Web Summit Lisbon 2025
+              I can help you discover talks, learn about speakers, and get
+              insights from Web Summit Lisbon 2025
             </p>
             <div className="grid gap-3 sm:grid-cols-2 text-left">
               {[
@@ -118,7 +214,11 @@ export function ChatInterface() {
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
           {messages.map((message) => (
             <div key={message.id}>
-              <div className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`flex gap-3 ${
+                  message.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
                 <div
                   className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 ${
                     message.role === "user"
@@ -126,62 +226,61 @@ export function ChatInterface() {
                       : "bg-zinc-900 text-zinc-100 border border-zinc-800"
                   }`}
                 >
-                  {message.parts
-                    .filter((part) => part.type === "text")
-                    .map((part, index) =>
-                      message.role === "user" ? (
-                        <p key={index} className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {part.text}
-                        </p>
-                      ) : (
-                        <div key={index} className="prose prose-invert prose-sm max-w-none">
-                          <Markdown>{part.text}</Markdown>
-                        </div>
-                      ),
-                    )}
-                  {message.role === "assistant" &&
-                    message.parts.filter((part) => part.type === "text").length === 0 && (
-                      <p className="text-xs text-zinc-500 italic">Processing response...</p>
-                    )}
+                  {message.role === "user" ? (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {message.content}
+                    </p>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <Markdown>{message.content}</Markdown>
+                    </div>
+                  )}
                 </div>
               </div>
-              {message.role === "assistant" && (message as any).metadata?.videoPlayer && (
+              {message.role === "assistant" && message.videoPlayer && (
                 <div className="mt-4">
                   <VideoPlayer
-                    talkId={(message as any).metadata.videoPlayer.talkId}
-                    title={(message as any).metadata.videoPlayer.title}
-                    videoUrl={(message as any).metadata.videoPlayer.videoUrl}
-                    startTime={(message as any).metadata.videoPlayer.startTime}
+                    talkId={message.videoPlayer.talkId}
+                    title={message.videoPlayer.title}
+                    videoUrl={message.videoPlayer.videoUrl}
+                    startTime={message.videoPlayer.startTime}
                   />
                 </div>
               )}
             </div>
           ))}
-          {status === "in_progress" && (
+          {isLoading && (
             <div className="flex gap-3 justify-start">
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4">
-                <div className="flex gap-1.5">
-                  <div
-                    className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
-                    style={{ animationDelay: "0ms", animationDuration: "1s" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
-                    style={{ animationDelay: "150ms", animationDuration: "1s" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
-                    style={{ animationDelay: "300ms", animationDuration: "1s" }}
-                  />
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <div
+                      className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
+                      style={{ animationDelay: "0ms", animationDuration: "1s" }}
+                    />
+                    <div
+                      className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
+                      style={{
+                        animationDelay: "150ms",
+                        animationDuration: "1s",
+                      }}
+                    />
+                    <div
+                      className="w-2 h-2 bg-[#ff3366] rounded-full animate-bounce"
+                      style={{
+                        animationDelay: "300ms",
+                        animationDuration: "1s",
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs text-zinc-400">
+                    {loadingStep === "database"
+                      ? "Fetching talks data..."
+                      : loadingStep === "ai"
+                      ? "Generating response..."
+                      : "Processing..."}
+                  </span>
                 </div>
-              </div>
-            </div>
-          )}
-          {error && (
-            <div className="flex gap-3 justify-start">
-              <div className="bg-red-950/50 border border-red-900/50 rounded-2xl px-4 py-3 text-red-200 text-sm">
-                <p className="font-medium">Error: Unable to get response</p>
-                <p className="text-xs text-red-300 mt-1">{error.message}</p>
               </div>
             </div>
           )}
@@ -198,13 +297,13 @@ export function ChatInterface() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about Web Summit talks..."
-              disabled={status === "in_progress"}
+              disabled={isLoading}
               className="min-h-[60px] max-h-[200px] resize-none bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-[#ff3366] pr-12"
             />
             <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || status === "in_progress"}
+              disabled={!input.trim() || isLoading}
               className="absolute bottom-2 right-2 bg-[#ff3366] hover:bg-[#e62958] text-white h-10 w-10"
             >
               <Send className="h-4 w-4" />
@@ -213,5 +312,5 @@ export function ChatInterface() {
         </form>
       </div>
     </div>
-  )
+  );
 }

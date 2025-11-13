@@ -6,9 +6,11 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "test:chat": "node app/api/chat/route.test.js && node app/api/chat/route.mock-test.js"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.65",
     "@ai-sdk/react": "latest",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
