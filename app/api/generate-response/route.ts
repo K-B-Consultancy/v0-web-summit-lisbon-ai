@@ -126,9 +126,14 @@ Respond naturally to the user's question based on this information. Remember to 
 
     console.log("[v0] Generated response length:", result.text.length);
 
-    // If we have transcript segments, also return video player data for the first/most relevant segment
+    // Only return video player if we actually found relevant transcript segments
     let videoPlayer = null;
-    if (talksData?.data?.type === "transcripts" && talksData.data.segments?.length > 0) {
+    if (
+      talksData?.data?.type === "transcripts" && 
+      talksData.data.segments?.length > 0 &&
+      talksData.data.segments[0]?.videoUrl
+    ) {
+      // Only show the first/most relevant segment to avoid multiple video players
       const firstSegment = talksData.data.segments[0];
       videoPlayer = {
         talkId: firstSegment.talkId,
@@ -137,6 +142,8 @@ Respond naturally to the user's question based on this information. Remember to 
         startTime: firstSegment.startTime,
       };
       console.log("[v0] Including video player data for timestamp:", firstSegment.startTime);
+    } else {
+      console.log("[v0] No video player - segments found:", talksData?.data?.segments?.length || 0);
     }
 
     return Response.json({
