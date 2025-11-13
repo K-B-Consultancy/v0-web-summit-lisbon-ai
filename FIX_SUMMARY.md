@@ -3,8 +3,18 @@
 ## Issue
 The home page chat was not generating any AI responses. Users could type messages, but the AI never responded.
 
-## Root Cause
+## Root Causes
+
+### Primary Issue (Fixed in commit 3fe3cb3)
 The chat API route (`/app/api/chat/route.ts`) was attempting to use a string model identifier (`"openai/gpt-4o-mini"`) instead of a properly initialized model object. The AI SDK requires a model instance created by a provider (like `createOpenAI`), not just a string.
+
+### Secondary Issue (Fixed in commit feca9fc)
+Even with the model properly initialized, the AI SDK's default behavior is to stop after the first step (`stepCountIs(1)`). This meant:
+- The AI would call tools like `getTalks` or `searchTranscripts`
+- But then stop without generating a text response
+- Users would see nothing because no text was generated
+
+**Solution**: Added `maxSteps: 5` parameter to allow the AI to perform multiple steps: call tools AND generate a natural language response based on the results.
 
 ## The Fix
 
@@ -53,6 +63,7 @@ const model = openai(modelName)  // ✅ Proper model object
 const result = streamText({
   model,  // ✅ Now passing a proper model object
   messages: modelMessages,
+  maxSteps: 5,  // ✅ CRITICAL: Allow AI to call tools AND generate text response
   // ... rest of config
 })
 ```
@@ -64,7 +75,28 @@ const result = streamText({
 4. ✅ Added support for GitHub Token (GITHUB_TOKEN) for GitHub Models/Copilot API
 5. ✅ Maintained support for OpenAI API Key (OPENAI_API_KEY)
 6. ✅ Added clear error message when no API key is configured
-7. ✅ Removed deprecated AI SDK parameters
+7. ✅ **Added `maxSteps: 5` to enable multi-step responses (tool calls + text generation)**
+8. ✅ Removed deprecated AI SDK parameters
+
+## How Multi-Step Responses Work
+
+**Without `maxSteps` (broken behavior):**
+```
+User asks: "What talks are available?"
+  → AI calls getTalks tool
+  → AI receives results from database
+  → ❌ STOPS HERE - No text response generated
+  → User sees nothing
+```
+
+**With `maxSteps: 5` (working behavior):**
+```
+User asks: "What talks are available?"
+  → Step 1: AI calls getTalks tool
+  → Step 2: AI receives results from database
+  → Step 3: AI generates response: "I found 10 talks at Web Summit! Here are some highlights:..."
+  → ✅ User sees natural language response with talk information
+```
 
 ## Testing Results
 - ✅ 8/8 validation tests passed
