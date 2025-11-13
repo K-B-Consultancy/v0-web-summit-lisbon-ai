@@ -2,9 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { ArrowLeft, Plus, Trash2, Edit, LogOut } from "lucide-react"
+import { ArrowLeft, Plus, Edit, LogOut } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DeleteTalkButton } from "@/components/delete-talk-button"
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -132,16 +133,7 @@ export default async function AdminPage() {
                               <Edit className="h-4 w-4" />
                             </Link>
                           </Button>
-                          <form action={`/api/admin/talks/${talk.id}/delete`} method="POST">
-                            <Button
-                              type="submit"
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-400 hover:text-red-300 hover:bg-red-950"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </form>
+                          <DeleteTalkButton talkId={talk.id} talkTitle={talk.title} />
                         </div>
                       </TableCell>
                     </TableRow>
