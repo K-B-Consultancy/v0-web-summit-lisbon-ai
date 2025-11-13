@@ -136,6 +136,7 @@ Respond naturally to the user's question based on this information. Remember to 
       // Find which segment the AI actually referenced in its response
       const segments = talksData.data.segments;
       let selectedSegment = segments[0]; // Default to first if we can't determine
+      let matchFound = false;
       
       // Try to find a segment that the AI mentioned by looking for talk titles or timestamps
       for (const segment of segments) {
@@ -145,22 +146,31 @@ Respond naturally to the user's question based on this information. Remember to 
         // Check if this segment's talk title is mentioned in the response
         if (segmentTitle && responseLower.includes(segmentTitle)) {
           selectedSegment = segment;
+          matchFound = true;
           console.log("[v0] Found segment match by talk title:", segmentTitle);
           break;
         }
         
-        // Check if the timestamp is mentioned (e.g., "2:30", "2 minutes 30 seconds")
+        // Check if the timestamp is mentioned in various formats
         const mins = Math.floor(segment.startTime / 60);
         const secs = Math.floor(segment.startTime % 60);
-        const timestampPattern1 = `${mins}:${String(secs).padStart(2, "0")}`;
-        const timestampPattern2 = `${mins} minute${mins !== 1 ? 's' : ''}`;
+        const timestampPattern1 = `${mins}:${String(secs).padStart(2, "0")}`; // e.g., "2:30"
+        const timestampPattern2 = `${mins} minute${mins !== 1 ? 's' : ''}`; // e.g., "2 minutes"
+        const timestampPattern3 = `${mins}m`; // e.g., "2m"
         
+        // Check for various timestamp formats in the response
         if (responseLower.includes(timestampPattern1) || 
-            (responseLower.includes(timestampPattern2) && responseLower.includes(`${secs} second`))) {
+            (responseLower.includes(timestampPattern2) && responseLower.includes(`${secs} second`)) ||
+            (responseLower.includes(timestampPattern3) && secs === 0)) {
           selectedSegment = segment;
+          matchFound = true;
           console.log("[v0] Found segment match by timestamp:", timestampPattern1);
           break;
         }
+      }
+      
+      if (!matchFound) {
+        console.log("[v0] No specific match found, using first segment");
       }
       
       videoPlayer = {
