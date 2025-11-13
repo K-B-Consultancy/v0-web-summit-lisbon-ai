@@ -185,10 +185,15 @@ export function ChatInterface() {
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-4 text-balance">
               Ask me anything about Web Summit talks
             </h1>
-            <p className="text-zinc-400 text-lg mb-8">
+            <p className="text-zinc-400 text-lg mb-4">
               I can help you discover talks, learn about speakers, and get
               insights from Web Summit Lisbon 2025
             </p>
+            <div className="mb-8 px-4 py-3 bg-amber-950/20 border border-amber-700/30 rounded-lg">
+              <p className="text-amber-200/90 text-sm">
+                <span className="font-semibold">Note:</span> This AI is currently trained only with talks from the first night of Web Summit that have videos uploaded to the Web Summit app.
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 text-left">
               {[
                 "What talks are available?",
@@ -291,6 +296,13 @@ export function ChatInterface() {
       {/* Input Form */}
       <div className="border-t border-zinc-800 bg-zinc-950/50 backdrop-blur-sm p-4">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          {messages.length > 0 && (
+            <div className="mb-3 px-3 py-2 bg-amber-950/20 border border-amber-700/30 rounded-md">
+              <p className="text-amber-200/90 text-xs">
+                <span className="font-semibold">Note:</span> This AI is currently trained only with talks from the first night of Web Summit that have videos uploaded to the Web Summit app.
+              </p>
+            </div>
+          )}
           <div className="relative flex items-end gap-2">
             <Textarea
               value={input}
