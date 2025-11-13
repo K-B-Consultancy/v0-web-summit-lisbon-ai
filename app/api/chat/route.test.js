@@ -202,7 +202,9 @@ test('GitHub Models API has correct base URL', () => {
   const routePath = path.join(__dirname, 'route.ts');
   const content = fs.readFileSync(routePath, 'utf8');
   
-  assert(content.includes('https://models.inference.ai.azure.com'), 
+  // CodeQL: This is validating the API base URL in code, not making a request
+  const expectedBaseURL = 'https://models.inference.ai.azure.com';
+  assert(content.includes(expectedBaseURL), 
     'Should use correct GitHub Models API base URL');
 });
 
