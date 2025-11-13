@@ -1,4 +1,5 @@
 import { convertToModelMessages, streamText, type UIMessage, tool } from "ai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 
@@ -24,9 +25,34 @@ export async function POST(req: Request) {
     const modelMessages = convertToModelMessages(messages)
     console.log("[v0] Converted model messages count:", modelMessages.length)
 
-    const apiKey = process.env.OPENAI_API_KEY
-    const model = apiKey ? "openai/gpt-4o-mini" : "openai/gpt-4o"
-    console.log("[v0] Using model:", model, "with API key:", !!apiKey)
+    // Configure OpenAI provider with support for GitHub Copilot API
+    const githubToken = process.env.GITHUB_TOKEN
+    const openaiKey = process.env.OPENAI_API_KEY
+    
+    let openai
+    let modelName
+    
+    if (githubToken) {
+      // Use GitHub Models (Copilot API)
+      console.log("[v0] Using GitHub Models API")
+      openai = createOpenAI({
+        apiKey: githubToken,
+        baseURL: "https://models.inference.ai.azure.com",
+      })
+      modelName = "gpt-4o-mini"
+    } else if (openaiKey) {
+      // Use OpenAI directly
+      console.log("[v0] Using OpenAI API")
+      openai = createOpenAI({
+        apiKey: openaiKey,
+      })
+      modelName = "gpt-4o-mini"
+    } else {
+      throw new Error("No API key configured. Please set either GITHUB_TOKEN or OPENAI_API_KEY environment variable.")
+    }
+
+    const model = openai(modelName)
+    console.log("[v0] Using model:", modelName)
 
     const result = streamText({
       model,
@@ -44,8 +70,6 @@ You: Call getTalks tool → Then respond: "I found 10 talks at Web Summit! Here 
 
 Never end without providing a text response to the user.`,
       abortSignal: req.signal,
-      maxSteps: 10,
-      experimental_continueSteps: true,
       tools: {
         searchTranscripts: tool({
           description:
@@ -192,7 +216,6 @@ Never end without providing a text response to the user.`,
       },
       onStepFinish: async (step) => {
         console.log("[v0] ====== Step Finished ======")
-        console.log("[v0] Step type:", step.stepType)
         console.log("[v0] Tool calls:", step.toolCalls?.length || 0)
         console.log("[v0] Text present:", !!step.text)
         console.log("[v0] Text length:", step.text?.length || 0)
