@@ -96,7 +96,10 @@ export function ChatInterface() {
       console.log("[v0] AI response result:", data);
 
       if (data.success) {
-        return data.response;
+        return {
+          text: data.response,
+          videoPlayer: data.videoPlayer,
+        };
       } else {
         throw new Error(data.error || "Failed to generate response");
       }
@@ -140,11 +143,12 @@ export function ChatInterface() {
       const aiResponse = await generateAIResponse(userQuery, talksData);
       console.log("[v0] AI response completed");
 
-      // Add assistant message
+      // Add assistant message with optional video player
       const assistantMessage: Message = {
         id: assistantMessageId,
         role: "assistant",
-        content: aiResponse,
+        content: aiResponse.text,
+        videoPlayer: aiResponse.videoPlayer,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -185,16 +189,19 @@ export function ChatInterface() {
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-4 text-balance">
               Ask me anything about Web Summit talks
             </h1>
-            <p className="text-zinc-400 text-lg mb-8">
+            <p className="text-zinc-400 text-lg mb-4">
               I can help you discover talks, find specific moments with
-              timestamps, and show you videos from Web Summit Lisbon 2025
+              timestamps, and <span className="text-[#ff3366] font-semibold">instantly show you the exact video moment</span> you're asking about
+            </p>
+            <p className="text-zinc-500 text-sm mb-8 italic">
+              💡 Ask about any topic and I'll show you the video at that exact moment!
             </p>
             <div className="grid gap-3 sm:grid-cols-2 text-left">
               {[
+                "What did they say about AI? 🎥",
+                "Show me sustainability moments 📹",
+                "Find blockchain discussions 🎬",
                 "What talks are available?",
-                "What did they say about AI?",
-                "Find moments about sustainability",
-                "Show me the keynote talk",
               ].map((suggestion) => (
                 <button
                   key={suggestion}
@@ -239,6 +246,10 @@ export function ChatInterface() {
               </div>
               {message.role === "assistant" && message.videoPlayer && (
                 <div className="mt-4">
+                  <div className="mb-2 flex items-center gap-2 text-[#ff3366] text-sm font-semibold">
+                    <span className="inline-block w-2 h-2 bg-[#ff3366] rounded-full animate-pulse"></span>
+                    Video player at timestamp {Math.floor(message.videoPlayer.startTime! / 60)}:{String(Math.floor(message.videoPlayer.startTime! % 60)).padStart(2, "0")}
+                  </div>
                   <VideoPlayer
                     talkId={message.videoPlayer.talkId}
                     title={message.videoPlayer.title}

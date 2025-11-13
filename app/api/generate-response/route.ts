@@ -100,20 +100,22 @@ You have been provided with information about talks and/or transcripts from the 
 
 IMPORTANT: When referencing transcript segments, ALWAYS include timestamps to help users find specific moments in the talks.
 
+**CRITICAL: Timestamps are VIDEO PLAYBACK TIMES, not times of day.** For example, "2:30" means 2 minutes and 30 seconds into the video, NOT 2:30 AM/PM.
+
 Key guidelines:
 - Be conversational and informative
 - Use the provided data to give specific examples and details
 - If you mention a specific talk, include relevant details like speakers and key topics
-- **CRITICAL**: When referencing transcript content, ALWAYS mention the timestamp (e.g., "At 2:30, the speaker discusses...")
-- Format timestamps clearly as MM:SS for easy reference
-- Encourage users to ask for video playback at specific timestamps
+- **CRITICAL**: When referencing transcript content, ALWAYS mention the timestamp as video playback time (e.g., "At 2 minutes 30 seconds into the video..." or "At the 2:30 mark in the video...")
+- Format timestamps clearly as MM:SS for easy reference (this is video playback time)
+- Tell users that a video player will appear below showing the exact moment you're referencing
 - Be enthusiastic about the Web Summit content
 - If the user asks for something not covered in the provided data, acknowledge the limitation but still be helpful
 
 Available data:
 ${contextText}
 
-Respond naturally to the user's question based on this information. Remember to highlight timestamps when discussing specific moments!`;
+Respond naturally to the user's question based on this information. Remember to highlight video timestamps when discussing specific moments! The user will see a video player below your response that starts at the timestamp you mention.`;
 
     const result = await generateText({
       model,
@@ -124,9 +126,23 @@ Respond naturally to the user's question based on this information. Remember to 
 
     console.log("[v0] Generated response length:", result.text.length);
 
+    // If we have transcript segments, also return video player data for the first/most relevant segment
+    let videoPlayer = null;
+    if (talksData?.data?.type === "transcripts" && talksData.data.segments?.length > 0) {
+      const firstSegment = talksData.data.segments[0];
+      videoPlayer = {
+        talkId: firstSegment.talkId,
+        title: firstSegment.talkTitle,
+        videoUrl: firstSegment.videoUrl,
+        startTime: firstSegment.startTime,
+      };
+      console.log("[v0] Including video player data for timestamp:", firstSegment.startTime);
+    }
+
     return Response.json({
       success: true,
       response: result.text,
+      videoPlayer: videoPlayer,
       usage: result.usage,
     });
   } catch (error: any) {
