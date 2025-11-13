@@ -70,6 +70,7 @@ You: Call getTalks tool → Then respond: "I found 10 talks at Web Summit! Here 
 
 Never end without providing a text response to the user.`,
       abortSignal: req.signal,
+      maxSteps: 5, // Allow multiple steps: tool call(s) + text generation
       tools: {
         searchTranscripts: tool({
           description:
