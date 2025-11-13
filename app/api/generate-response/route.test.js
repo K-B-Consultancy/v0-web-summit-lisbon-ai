@@ -2,10 +2,9 @@
  * Unit Test for Video Segment Selection Logic
  * 
  * This test validates that the generate-response API properly:
- * 1. Selects the correct video segment based on talk title mentions
- * 2. Selects the correct video segment based on timestamp mentions
- * 3. Falls back to first segment when no match is found
- * 4. Does not show video when AI indicates no information found
+ * 1. Shows video when AI returns a valid segment index
+ * 2. Does not show video when AI returns null segment index
+ * 3. Handles invalid segment indices gracefully
  * 
  * Run with: node app/api/generate-response/route.test.js
  */
@@ -27,59 +26,28 @@ function test(name, fn) {
   }
 }
 
-// Check if AI response indicates no information found
-function hasNoInfo(aiResponseText) {
-  const responseLower = aiResponseText.toLowerCase();
-  const noInfoPhrases = [
-    "don't have any specific information",
-    "don't have information",
-    "no specific information",
-    "couldn't find",
-    "no information",
-    "no transcript segments",
-    "no matching",
-  ];
-  return noInfoPhrases.some(phrase => responseLower.includes(phrase));
-}
-
-// Simulate the segment selection logic from route.ts
-function selectSegment(segments, aiResponseText) {
-  // Check if response indicates no info found - if so, return null
-  if (hasNoInfo(aiResponseText)) {
-    return { selectedSegment: null, matchFound: false, noInfo: true };
+// Simulate the new structured response logic from route.ts
+function selectSegment(segments, videoSegmentIndex) {
+  // If no segment index provided, return null
+  if (videoSegmentIndex === null || videoSegmentIndex === undefined) {
+    return { selectedSegment: null, reason: 'No segment index provided' };
   }
 
-  let selectedSegment = segments[0]; // Default to first
-  let matchFound = false;
-  
-  for (const segment of segments) {
-    const segmentTitle = segment.talkTitle?.toLowerCase() || '';
-    const responseLower = aiResponseText.toLowerCase();
-    
-    // Check if this segment's talk title is mentioned in the response
-    if (segmentTitle && responseLower.includes(segmentTitle)) {
-      selectedSegment = segment;
-      matchFound = true;
-      break;
-    }
-    
-    // Check if the timestamp is mentioned in various formats
-    const mins = Math.floor(segment.startTime / 60);
-    const secs = Math.floor(segment.startTime % 60);
-    const timestampPattern1 = `${mins}:${String(secs).padStart(2, "0")}`; // e.g., "2:30"
-    const timestampPattern2 = `${mins} minute${mins !== 1 ? 's' : ''}`; // e.g., "2 minutes"
-    const timestampPattern3 = `${mins}m`; // e.g., "2m"
-    
-    if (responseLower.includes(timestampPattern1) || 
-        (responseLower.includes(timestampPattern2) && responseLower.includes(`${secs} second`)) ||
-        (responseLower.includes(timestampPattern3) && secs === 0)) {
-      selectedSegment = segment;
-      matchFound = true;
-      break;
-    }
+  // Validate segment index
+  if (typeof videoSegmentIndex !== 'number' || 
+      videoSegmentIndex < 0 || 
+      videoSegmentIndex >= segments.length) {
+    return { selectedSegment: null, reason: 'Invalid segment index' };
   }
+
+  const selectedSegment = segments[videoSegmentIndex];
   
-  return { selectedSegment, matchFound, noInfo: false };
+  // Check if segment has video URL
+  if (!selectedSegment?.videoUrl) {
+    return { selectedSegment: null, reason: 'Segment has no video URL' };
+  }
+
+  return { selectedSegment, reason: 'Valid segment selected' };
 }
 
 // Test Data
@@ -102,138 +70,104 @@ const testSegments = [
     videoUrl: "https://example.com/video3.mp4",
     startTime: 420, // 7:00
   },
+  {
+    talkId: "talk-4",
+    talkTitle: "Talk without video",
+    videoUrl: null, // No video URL
+    startTime: 600,
+  },
 ];
 
-// Test 1: Match by talk title
-test('Should select segment when talk title is mentioned', () => {
-  const response = "I found information about blockchain in 'Blockchain Revolution' talk.";
-  const result = selectSegment(testSegments, response);
+// Test 1: Select first segment when index is 0
+test('Should select first segment when videoSegmentIndex is 0', () => {
+  const result = selectSegment(testSegments, 0);
   
-  if (result.noInfo) {
-    throw new Error('Expected noInfo to be false');
+  if (!result.selectedSegment) {
+    throw new Error('Expected selectedSegment to be defined');
   }
-  if (result.selectedSegment.talkId !== "talk-2") {
-    throw new Error(`Expected talk-2, got ${result.selectedSegment.talkId}`);
-  }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
-});
-
-// Test 2: Match by timestamp (MM:SS format)
-test('Should select segment when timestamp MM:SS is mentioned', () => {
-  const response = "At 2:30 in the video, they discussed AI ethics.";
-  const result = selectSegment(testSegments, response);
-  
   if (result.selectedSegment.talkId !== "talk-1") {
     throw new Error(`Expected talk-1, got ${result.selectedSegment.talkId}`);
   }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
 });
 
-// Test 3: Match by timestamp (minutes/seconds format)
-test('Should select segment when timestamp in minutes/seconds format is mentioned', () => {
-  const response = "At 5 minutes 0 seconds into the video, they talked about blockchain.";
-  const result = selectSegment(testSegments, response);
+// Test 2: Select second segment when index is 1
+test('Should select second segment when videoSegmentIndex is 1', () => {
+  const result = selectSegment(testSegments, 1);
   
+  if (!result.selectedSegment) {
+    throw new Error('Expected selectedSegment to be defined');
+  }
   if (result.selectedSegment.talkId !== "talk-2") {
     throw new Error(`Expected talk-2, got ${result.selectedSegment.talkId}`);
   }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
 });
 
-// Test 4: Match by timestamp (shorthand format)
-test('Should select segment when timestamp in shorthand format is mentioned', () => {
-  const response = "At 7m in the talk about sustainability...";
-  const result = selectSegment(testSegments, response);
+// Test 3: Select third segment when index is 2
+test('Should select third segment when videoSegmentIndex is 2', () => {
+  const result = selectSegment(testSegments, 2);
   
+  if (!result.selectedSegment) {
+    throw new Error('Expected selectedSegment to be defined');
+  }
   if (result.selectedSegment.talkId !== "talk-3") {
     throw new Error(`Expected talk-3, got ${result.selectedSegment.talkId}`);
   }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
 });
 
-// Test 5: No match - fallback to first (when no "no info" phrase)
-test('Should fallback to first segment when no match found and no "no info" phrase', () => {
-  const response = "Here's some general information about the conference.";
-  const result = selectSegment(testSegments, response);
+// Test 4: Return null when videoSegmentIndex is null
+test('Should return null when videoSegmentIndex is null (no info found)', () => {
+  const result = selectSegment(testSegments, null);
   
-  if (result.noInfo) {
-    throw new Error('Expected noInfo to be false');
-  }
-  if (result.selectedSegment.talkId !== "talk-1") {
-    throw new Error(`Expected talk-1 (first segment), got ${result.selectedSegment.talkId}`);
-  }
-  if (result.matchFound) {
-    throw new Error('Expected matchFound to be false');
-  }
-});
-
-// Test 6: Case insensitive matching
-test('Should match talk title case-insensitively', () => {
-  const response = "The FUTURE OF AI IN EUROPE talk discussed interesting points.";
-  const result = selectSegment(testSegments, response);
-  
-  if (result.noInfo) {
-    throw new Error('Expected noInfo to be false');
-  }
-  if (result.selectedSegment.talkId !== "talk-1") {
-    throw new Error(`Expected talk-1, got ${result.selectedSegment.talkId}`);
-  }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
-});
-
-// Test 7: First match wins when multiple segments mentioned
-test('Should return first matching segment when multiple are mentioned', () => {
-  const response = "Both 'The Future of AI in Europe' and 'Blockchain Revolution' covered interesting topics.";
-  const result = selectSegment(testSegments, response);
-  
-  if (result.noInfo) {
-    throw new Error('Expected noInfo to be false');
-  }
-  // Should match first title mentioned
-  if (result.selectedSegment.talkId !== "talk-1") {
-    throw new Error(`Expected talk-1 (first match), got ${result.selectedSegment.talkId}`);
-  }
-  if (!result.matchFound) {
-    throw new Error('Expected matchFound to be true');
-  }
-});
-
-// Test 8: No video when AI says no information found
-test('Should not return video when AI indicates no information found', () => {
-  const response = "It seems that I don't have any specific information or transcript segments about Khalid discussing mobility.";
-  const result = selectSegment(testSegments, response);
-  
-  if (!result.noInfo) {
-    throw new Error('Expected noInfo to be true');
-  }
-  if (result.selectedSegment !== null) {
-    throw new Error('Expected selectedSegment to be null when no info found');
-  }
-  if (result.matchFound) {
-    throw new Error('Expected matchFound to be false');
-  }
-});
-
-// Test 9: No video with "couldn't find" phrase
-test('Should not return video when AI says "couldn\'t find"', () => {
-  const response = "I couldn't find any information about that topic in the available transcripts.";
-  const result = selectSegment(testSegments, response);
-  
-  if (!result.noInfo) {
-    throw new Error('Expected noInfo to be true');
-  }
   if (result.selectedSegment !== null) {
     throw new Error('Expected selectedSegment to be null');
+  }
+  if (result.reason !== 'No segment index provided') {
+    throw new Error(`Expected reason 'No segment index provided', got '${result.reason}'`);
+  }
+});
+
+// Test 5: Return null when videoSegmentIndex is undefined
+test('Should return null when videoSegmentIndex is undefined', () => {
+  const result = selectSegment(testSegments, undefined);
+  
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null');
+  }
+});
+
+// Test 6: Return null for negative index
+test('Should return null for negative videoSegmentIndex', () => {
+  const result = selectSegment(testSegments, -1);
+  
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null for negative index');
+  }
+  if (result.reason !== 'Invalid segment index') {
+    throw new Error(`Expected reason 'Invalid segment index', got '${result.reason}'`);
+  }
+});
+
+// Test 7: Return null for out-of-bounds index
+test('Should return null when videoSegmentIndex is out of bounds', () => {
+  const result = selectSegment(testSegments, 999);
+  
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null for out-of-bounds index');
+  }
+  if (result.reason !== 'Invalid segment index') {
+    throw new Error(`Expected reason 'Invalid segment index', got '${result.reason}'`);
+  }
+});
+
+// Test 8: Return null when segment has no video URL
+test('Should return null when selected segment has no video URL', () => {
+  const result = selectSegment(testSegments, 3); // talk-4 has no video
+  
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null when no video URL');
+  }
+  if (result.reason !== 'Segment has no video URL') {
+    throw new Error(`Expected reason 'Segment has no video URL', got '${result.reason}'`);
   }
 });
 

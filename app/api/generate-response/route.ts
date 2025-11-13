@@ -115,7 +115,22 @@ Key guidelines:
 Available data:
 ${contextText}
 
-Respond naturally to the user's question based on this information. Remember to highlight video timestamps when discussing specific moments! The user will see a video player below your response that starts at the timestamp you mention.`;
+You MUST respond in JSON format with the following structure:
+{
+  "text": "Your natural language response to the user",
+  "videoSegmentIndex": <number or null>
+}
+
+The "videoSegmentIndex" field should be:
+- The index (0-based) of the segment you're primarily referencing in your response (if any)
+- null if you're not referencing a specific segment or if no relevant information was found
+
+For example:
+- If you reference segment 1 from the data, set "videoSegmentIndex": 0
+- If no relevant information was found, set "videoSegmentIndex": null
+- If talking generally about multiple segments without focusing on one, set "videoSegmentIndex": null
+
+Remember to highlight video timestamps when discussing specific moments!`;
 
     const result = await generateText({
       model,
@@ -126,85 +141,53 @@ Respond naturally to the user's question based on this information. Remember to 
 
     console.log("[v0] Generated response length:", result.text.length);
 
-    // Check if the AI response indicates no information was found
-    const responseLower = result.text.toLowerCase();
-    const noInfoPhrases = [
-      "don't have any specific information",
-      "don't have information",
-      "no specific information",
-      "couldn't find",
-      "no information",
-      "no transcript segments",
-      "no matching",
-    ];
-    const hasNoInfo = noInfoPhrases.some(phrase => responseLower.includes(phrase));
+    // Parse the JSON response from the AI
+    let aiResponse;
+    let videoSegmentIndex = null;
+    try {
+      aiResponse = JSON.parse(result.text);
+      videoSegmentIndex = aiResponse.videoSegmentIndex;
+      console.log("[v0] Parsed AI response - videoSegmentIndex:", videoSegmentIndex);
+    } catch (error) {
+      console.error("[v0] Failed to parse AI response as JSON, using raw text:", error);
+      // Fallback: treat entire response as text with no video
+      aiResponse = { text: result.text, videoSegmentIndex: null };
+    }
 
-    // Only return video player if we actually found relevant transcript segments
-    // AND the AI response doesn't indicate that no information was found
+    // Only return video player if AI explicitly indicated a segment
     let videoPlayer = null;
     if (
       talksData?.data?.type === "transcripts" && 
       talksData.data.segments?.length > 0 &&
-      talksData.data.segments[0]?.videoUrl &&
-      !hasNoInfo
+      videoSegmentIndex !== null &&
+      typeof videoSegmentIndex === 'number' &&
+      videoSegmentIndex >= 0 &&
+      videoSegmentIndex < talksData.data.segments.length
     ) {
-      // Find which segment the AI actually referenced in its response
-      const segments = talksData.data.segments;
-      let selectedSegment = segments[0]; // Default to first if we can't determine
-      let matchFound = false;
+      const selectedSegment = talksData.data.segments[videoSegmentIndex];
       
-      // Try to find a segment that the AI mentioned by looking for talk titles or timestamps
-      for (const segment of segments) {
-        const segmentTitle = segment.talkTitle?.toLowerCase() || '';
-        
-        // Check if this segment's talk title is mentioned in the response
-        if (segmentTitle && responseLower.includes(segmentTitle)) {
-          selectedSegment = segment;
-          matchFound = true;
-          console.log("[v0] Found segment match by talk title:", segmentTitle);
-          break;
-        }
-        
-        // Check if the timestamp is mentioned in various formats
-        const mins = Math.floor(segment.startTime / 60);
-        const secs = Math.floor(segment.startTime % 60);
-        const timestampPattern1 = `${mins}:${String(secs).padStart(2, "0")}`; // e.g., "2:30"
-        const timestampPattern2 = `${mins} minute${mins !== 1 ? 's' : ''}`; // e.g., "2 minutes"
-        const timestampPattern3 = `${mins}m`; // e.g., "2m"
-        
-        // Check for various timestamp formats in the response
-        if (responseLower.includes(timestampPattern1) || 
-            (responseLower.includes(timestampPattern2) && responseLower.includes(`${secs} second`)) ||
-            (responseLower.includes(timestampPattern3) && secs === 0)) {
-          selectedSegment = segment;
-          matchFound = true;
-          console.log("[v0] Found segment match by timestamp:", timestampPattern1);
-          break;
-        }
-      }
-      
-      if (!matchFound) {
-        console.log("[v0] No specific match found, using first segment");
-      }
-      
-      videoPlayer = {
-        talkId: selectedSegment.talkId,
-        title: selectedSegment.talkTitle,
-        videoUrl: selectedSegment.videoUrl,
-        startTime: selectedSegment.startTime,
-      };
-      console.log("[v0] Including video player data for talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
-    } else {
-      if (hasNoInfo) {
-        console.log("[v0] No video player - AI indicated no information found");
+      if (selectedSegment?.videoUrl) {
+        videoPlayer = {
+          talkId: selectedSegment.talkId,
+          title: selectedSegment.talkTitle,
+          videoUrl: selectedSegment.videoUrl,
+          startTime: selectedSegment.startTime,
+        };
+        console.log("[v0] Including video player for segment", videoSegmentIndex, "- talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
       } else {
-        console.log("[v0] No video player - segments found:", talksData?.data?.segments?.length || 0);
+        console.log("[v0] Selected segment", videoSegmentIndex, "has no video URL");
+      }
+    } else {
+      if (videoSegmentIndex === null) {
+        console.log("[v0] No video player - AI indicated no specific segment (videoSegmentIndex: null)");
+      } else {
+        console.log("[v0] No video player - invalid segment index or no segments available");
       }
     }
 
     return Response.json({
       success: true,
-      response: result.text,
+      response: aiResponse.text,
       videoPlayer: videoPlayer,
       usage: result.usage,
     });
