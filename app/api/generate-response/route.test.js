@@ -5,6 +5,7 @@
  * 1. Selects the correct video segment based on talk title mentions
  * 2. Selects the correct video segment based on timestamp mentions
  * 3. Falls back to first segment when no match is found
+ * 4. Does not show video when AI indicates no information found
  * 
  * Run with: node app/api/generate-response/route.test.js
  */
@@ -26,8 +27,28 @@ function test(name, fn) {
   }
 }
 
+// Check if AI response indicates no information found
+function hasNoInfo(aiResponseText) {
+  const responseLower = aiResponseText.toLowerCase();
+  const noInfoPhrases = [
+    "don't have any specific information",
+    "don't have information",
+    "no specific information",
+    "couldn't find",
+    "no information",
+    "no transcript segments",
+    "no matching",
+  ];
+  return noInfoPhrases.some(phrase => responseLower.includes(phrase));
+}
+
 // Simulate the segment selection logic from route.ts
 function selectSegment(segments, aiResponseText) {
+  // Check if response indicates no info found - if so, return null
+  if (hasNoInfo(aiResponseText)) {
+    return { selectedSegment: null, matchFound: false, noInfo: true };
+  }
+
   let selectedSegment = segments[0]; // Default to first
   let matchFound = false;
   
@@ -58,7 +79,7 @@ function selectSegment(segments, aiResponseText) {
     }
   }
   
-  return { selectedSegment, matchFound };
+  return { selectedSegment, matchFound, noInfo: false };
 }
 
 // Test Data
@@ -88,6 +109,9 @@ test('Should select segment when talk title is mentioned', () => {
   const response = "I found information about blockchain in 'Blockchain Revolution' talk.";
   const result = selectSegment(testSegments, response);
   
+  if (result.noInfo) {
+    throw new Error('Expected noInfo to be false');
+  }
   if (result.selectedSegment.talkId !== "talk-2") {
     throw new Error(`Expected talk-2, got ${result.selectedSegment.talkId}`);
   }
@@ -135,11 +159,14 @@ test('Should select segment when timestamp in shorthand format is mentioned', ()
   }
 });
 
-// Test 5: No match - fallback to first
-test('Should fallback to first segment when no match found', () => {
-  const response = "I couldn't find specific information about unicorns.";
+// Test 5: No match - fallback to first (when no "no info" phrase)
+test('Should fallback to first segment when no match found and no "no info" phrase', () => {
+  const response = "Here's some general information about the conference.";
   const result = selectSegment(testSegments, response);
   
+  if (result.noInfo) {
+    throw new Error('Expected noInfo to be false');
+  }
   if (result.selectedSegment.talkId !== "talk-1") {
     throw new Error(`Expected talk-1 (first segment), got ${result.selectedSegment.talkId}`);
   }
@@ -153,6 +180,9 @@ test('Should match talk title case-insensitively', () => {
   const response = "The FUTURE OF AI IN EUROPE talk discussed interesting points.";
   const result = selectSegment(testSegments, response);
   
+  if (result.noInfo) {
+    throw new Error('Expected noInfo to be false');
+  }
   if (result.selectedSegment.talkId !== "talk-1") {
     throw new Error(`Expected talk-1, got ${result.selectedSegment.talkId}`);
   }
@@ -166,12 +196,44 @@ test('Should return first matching segment when multiple are mentioned', () => {
   const response = "Both 'The Future of AI in Europe' and 'Blockchain Revolution' covered interesting topics.";
   const result = selectSegment(testSegments, response);
   
+  if (result.noInfo) {
+    throw new Error('Expected noInfo to be false');
+  }
   // Should match first title mentioned
   if (result.selectedSegment.talkId !== "talk-1") {
     throw new Error(`Expected talk-1 (first match), got ${result.selectedSegment.talkId}`);
   }
   if (!result.matchFound) {
     throw new Error('Expected matchFound to be true');
+  }
+});
+
+// Test 8: No video when AI says no information found
+test('Should not return video when AI indicates no information found', () => {
+  const response = "It seems that I don't have any specific information or transcript segments about Khalid discussing mobility.";
+  const result = selectSegment(testSegments, response);
+  
+  if (!result.noInfo) {
+    throw new Error('Expected noInfo to be true');
+  }
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null when no info found');
+  }
+  if (result.matchFound) {
+    throw new Error('Expected matchFound to be false');
+  }
+});
+
+// Test 9: No video with "couldn't find" phrase
+test('Should not return video when AI says "couldn\'t find"', () => {
+  const response = "I couldn't find any information about that topic in the available transcripts.";
+  const result = selectSegment(testSegments, response);
+  
+  if (!result.noInfo) {
+    throw new Error('Expected noInfo to be true');
+  }
+  if (result.selectedSegment !== null) {
+    throw new Error('Expected selectedSegment to be null');
   }
 });
 

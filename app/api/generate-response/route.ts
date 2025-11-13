@@ -126,12 +126,27 @@ Respond naturally to the user's question based on this information. Remember to 
 
     console.log("[v0] Generated response length:", result.text.length);
 
+    // Check if the AI response indicates no information was found
+    const responseLower = result.text.toLowerCase();
+    const noInfoPhrases = [
+      "don't have any specific information",
+      "don't have information",
+      "no specific information",
+      "couldn't find",
+      "no information",
+      "no transcript segments",
+      "no matching",
+    ];
+    const hasNoInfo = noInfoPhrases.some(phrase => responseLower.includes(phrase));
+
     // Only return video player if we actually found relevant transcript segments
+    // AND the AI response doesn't indicate that no information was found
     let videoPlayer = null;
     if (
       talksData?.data?.type === "transcripts" && 
       talksData.data.segments?.length > 0 &&
-      talksData.data.segments[0]?.videoUrl
+      talksData.data.segments[0]?.videoUrl &&
+      !hasNoInfo
     ) {
       // Find which segment the AI actually referenced in its response
       const segments = talksData.data.segments;
@@ -141,7 +156,6 @@ Respond naturally to the user's question based on this information. Remember to 
       // Try to find a segment that the AI mentioned by looking for talk titles or timestamps
       for (const segment of segments) {
         const segmentTitle = segment.talkTitle?.toLowerCase() || '';
-        const responseLower = result.text.toLowerCase();
         
         // Check if this segment's talk title is mentioned in the response
         if (segmentTitle && responseLower.includes(segmentTitle)) {
@@ -181,7 +195,11 @@ Respond naturally to the user's question based on this information. Remember to 
       };
       console.log("[v0] Including video player data for talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
     } else {
-      console.log("[v0] No video player - segments found:", talksData?.data?.segments?.length || 0);
+      if (hasNoInfo) {
+        console.log("[v0] No video player - AI indicated no information found");
+      } else {
+        console.log("[v0] No video player - segments found:", talksData?.data?.segments?.length || 0);
+      }
     }
 
     return Response.json({
