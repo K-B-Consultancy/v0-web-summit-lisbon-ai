@@ -186,15 +186,15 @@ export function ChatInterface() {
               Ask me anything about Web Summit talks
             </h1>
             <p className="text-zinc-400 text-lg mb-8">
-              I can help you discover talks, learn about speakers, and get
-              insights from Web Summit Lisbon 2025
+              I can help you discover talks, find specific moments with
+              timestamps, and show you videos from Web Summit Lisbon 2025
             </p>
             <div className="grid gap-3 sm:grid-cols-2 text-left">
               {[
                 "What talks are available?",
-                "Tell me about AI sessions",
+                "What did they say about AI?",
+                "Find moments about sustainability",
                 "Show me the keynote talk",
-                "Find talks about sustainability",
               ].map((suggestion) => (
                 <button
                   key={suggestion}

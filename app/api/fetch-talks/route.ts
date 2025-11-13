@@ -23,7 +23,14 @@ export async function POST(req: Request) {
     if (
       queryLower.includes("transcript") ||
       queryLower.includes("content") ||
-      queryLower.includes("said")
+      queryLower.includes("said") ||
+      queryLower.includes("mentioned") ||
+      queryLower.includes("about") ||
+      queryLower.includes("discuss") ||
+      queryLower.includes("talk about") ||
+      queryLower.includes("what") ||
+      queryLower.includes("when") ||
+      queryLower.includes("moment")
     ) {
       // Search transcripts
       console.log("[v0] Searching transcripts for query:", query);

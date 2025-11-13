@@ -76,15 +76,20 @@ export async function POST(req: Request) {
         .join("\n")}`;
     } else if (talksData?.data?.type === "transcripts") {
       const segments = talksData.data.segments || [];
-      contextText = `Transcript segments from Web Summit talks:\n\n${segments
+      contextText = `Transcript segments from Web Summit talks (with timestamps):\n\n${segments
         .map(
-          (seg: any, index: number) =>
-            `${index + 1}. **${seg.talkTitle}** (${Math.floor(
-              seg.startTime / 60
-            )}:${String(seg.startTime % 60).padStart(2, "0")})
+          (seg: any, index: number) => {
+            const startMins = Math.floor(seg.startTime / 60);
+            const startSecs = Math.floor(seg.startTime % 60);
+            const endMins = Math.floor(seg.endTime / 60);
+            const endSecs = Math.floor(seg.endTime % 60);
+            return `${index + 1}. **${seg.talkTitle}** 
+   - Timestamp: ${startMins}:${String(startSecs).padStart(2, "0")}-${endMins}:${String(endSecs).padStart(2, "0")}
    - Speaker: ${seg.speaker}
    - Content: "${seg.text}"
-`
+   - Video URL: ${seg.videoUrl || "Not available"}
+`;
+          }
         )
         .join("\n")}`;
     }
@@ -93,18 +98,22 @@ export async function POST(req: Request) {
 
 You have been provided with information about talks and/or transcripts from the conference. Use this information to provide helpful, accurate, and engaging responses to user questions.
 
+IMPORTANT: When referencing transcript segments, ALWAYS include timestamps to help users find specific moments in the talks.
+
 Key guidelines:
 - Be conversational and informative
 - Use the provided data to give specific examples and details
 - If you mention a specific talk, include relevant details like speakers and key topics
-- If you reference transcript content, you can mention the speaker and timing
+- **CRITICAL**: When referencing transcript content, ALWAYS mention the timestamp (e.g., "At 2:30, the speaker discusses...")
+- Format timestamps clearly as MM:SS for easy reference
+- Encourage users to ask for video playback at specific timestamps
 - Be enthusiastic about the Web Summit content
 - If the user asks for something not covered in the provided data, acknowledge the limitation but still be helpful
 
 Available data:
 ${contextText}
 
-Respond naturally to the user's question based on this information.`;
+Respond naturally to the user's question based on this information. Remember to highlight timestamps when discussing specific moments!`;
 
     const result = await generateText({
       model,
