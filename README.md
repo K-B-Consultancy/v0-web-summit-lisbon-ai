@@ -10,6 +10,23 @@
 This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
 Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
 
+## Setup
+
+### AI Chat Configuration
+The chat interface requires an API key to function. See **[CHAT_API_SETUP.md](./CHAT_API_SETUP.md)** for detailed setup instructions.
+
+**Quick Setup:**
+```bash
+# Set either GitHub Token or OpenAI API Key
+export GITHUB_TOKEN=your_token_here
+# OR
+export OPENAI_API_KEY=your_key_here
+
+# Install dependencies and run
+npm install --legacy-peer-deps
+npm run dev
+```
+
 ## Deployment
 
 Your project is live at:
