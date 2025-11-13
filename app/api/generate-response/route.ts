@@ -133,15 +133,43 @@ Respond naturally to the user's question based on this information. Remember to 
       talksData.data.segments?.length > 0 &&
       talksData.data.segments[0]?.videoUrl
     ) {
-      // Only show the first/most relevant segment to avoid multiple video players
-      const firstSegment = talksData.data.segments[0];
+      // Find which segment the AI actually referenced in its response
+      const segments = talksData.data.segments;
+      let selectedSegment = segments[0]; // Default to first if we can't determine
+      
+      // Try to find a segment that the AI mentioned by looking for talk titles or timestamps
+      for (const segment of segments) {
+        const segmentTitle = segment.talkTitle?.toLowerCase() || '';
+        const responseLower = result.text.toLowerCase();
+        
+        // Check if this segment's talk title is mentioned in the response
+        if (segmentTitle && responseLower.includes(segmentTitle)) {
+          selectedSegment = segment;
+          console.log("[v0] Found segment match by talk title:", segmentTitle);
+          break;
+        }
+        
+        // Check if the timestamp is mentioned (e.g., "2:30", "2 minutes 30 seconds")
+        const mins = Math.floor(segment.startTime / 60);
+        const secs = Math.floor(segment.startTime % 60);
+        const timestampPattern1 = `${mins}:${String(secs).padStart(2, "0")}`;
+        const timestampPattern2 = `${mins} minute${mins !== 1 ? 's' : ''}`;
+        
+        if (responseLower.includes(timestampPattern1) || 
+            (responseLower.includes(timestampPattern2) && responseLower.includes(`${secs} second`))) {
+          selectedSegment = segment;
+          console.log("[v0] Found segment match by timestamp:", timestampPattern1);
+          break;
+        }
+      }
+      
       videoPlayer = {
-        talkId: firstSegment.talkId,
-        title: firstSegment.talkTitle,
-        videoUrl: firstSegment.videoUrl,
-        startTime: firstSegment.startTime,
+        talkId: selectedSegment.talkId,
+        title: selectedSegment.talkTitle,
+        videoUrl: selectedSegment.videoUrl,
+        startTime: selectedSegment.startTime,
       };
-      console.log("[v0] Including video player data for timestamp:", firstSegment.startTime);
+      console.log("[v0] Including video player data for talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
     } else {
       console.log("[v0] No video player - segments found:", talksData?.data?.segments?.length || 0);
     }
