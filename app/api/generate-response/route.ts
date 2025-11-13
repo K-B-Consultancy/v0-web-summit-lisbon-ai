@@ -108,7 +108,8 @@ Key guidelines:
 - If you mention a specific talk, include relevant details like speakers and key topics
 - **CRITICAL**: When referencing transcript content, ALWAYS mention the timestamp as video playback time (e.g., "At 2 minutes 30 seconds into the video..." or "At the 2:30 mark in the video...")
 - Format timestamps clearly as MM:SS for easy reference (this is video playback time)
-- Tell users that a video player will appear below showing the exact moment you're referencing
+- **IMPORTANT**: Only set videoSegmentIndex if you are DIRECTLY discussing and quoting from that specific segment in your response
+- If you mention multiple segments or talks generally, set videoSegmentIndex to null
 - Be enthusiastic about the Web Summit content
 - If the user asks for something not covered in the provided data, acknowledge the limitation but still be helpful
 
@@ -118,19 +119,24 @@ ${contextText}
 You MUST respond in JSON format with the following structure:
 {
   "text": "Your natural language response to the user",
-  "videoSegmentIndex": <number or null>
+  "videoSegmentIndex": <number or null>,
+  "referencedTalkTitle": "<exact talk title from the segment or null>"
 }
 
-The "videoSegmentIndex" field should be:
-- The index (0-based) of the segment you're primarily referencing in your response (if any)
-- null if you're not referencing a specific segment or if no relevant information was found
+**CRITICAL RULES for videoSegmentIndex and referencedTalkTitle:**
+1. ONLY set videoSegmentIndex if you are directly quoting or discussing content from that specific segment
+2. The segment you reference with videoSegmentIndex MUST be the one you're primarily discussing in your text
+3. You MUST mention the exact talk title in your response text if setting videoSegmentIndex
+4. Set referencedTalkTitle to the EXACT title of the talk from the segment you're referencing (copy it exactly)
+5. If you cannot find relevant information, set both to null
+6. If you're discussing multiple segments without focusing on one specific segment, set both to null
 
-For example:
-- If you reference segment 1 from the data, set "videoSegmentIndex": 0
-- If no relevant information was found, set "videoSegmentIndex": null
-- If talking generally about multiple segments without focusing on one, set "videoSegmentIndex": null
+Examples:
+- If discussing segment 1 about AI and mentioning it by name: {"text": "In 'The Future of AI' talk, at 2:30, they discussed...", "videoSegmentIndex": 0, "referencedTalkTitle": "The Future of AI"}
+- If no relevant info found: {"text": "I don't have information about that topic.", "videoSegmentIndex": null, "referencedTalkTitle": null}
+- If discussing multiple segments generally: {"text": "Several talks covered AI including...", "videoSegmentIndex": null, "referencedTalkTitle": null}
 
-Remember to highlight video timestamps when discussing specific moments!`;
+Remember: Your videoSegmentIndex choice will determine which video appears. Make absolutely sure it matches what you're discussing!`;
 
     const result = await generateText({
       model,
@@ -144,17 +150,20 @@ Remember to highlight video timestamps when discussing specific moments!`;
     // Parse the JSON response from the AI
     let aiResponse;
     let videoSegmentIndex = null;
+    let referencedTalkTitle = null;
     try {
       aiResponse = JSON.parse(result.text);
       videoSegmentIndex = aiResponse.videoSegmentIndex;
-      console.log("[v0] Parsed AI response - videoSegmentIndex:", videoSegmentIndex);
+      referencedTalkTitle = aiResponse.referencedTalkTitle;
+      console.log("[v0] Parsed AI response - videoSegmentIndex:", videoSegmentIndex, "referencedTalkTitle:", referencedTalkTitle);
     } catch (error) {
       console.error("[v0] Failed to parse AI response as JSON, using raw text:", error);
       // Fallback: treat entire response as text with no video
-      aiResponse = { text: result.text, videoSegmentIndex: null };
+      aiResponse = { text: result.text, videoSegmentIndex: null, referencedTalkTitle: null };
     }
 
     // Only return video player if AI explicitly indicated a segment
+    // AND the referenced talk title matches
     let videoPlayer = null;
     if (
       talksData?.data?.type === "transcripts" && 
@@ -162,24 +171,43 @@ Remember to highlight video timestamps when discussing specific moments!`;
       videoSegmentIndex !== null &&
       typeof videoSegmentIndex === 'number' &&
       videoSegmentIndex >= 0 &&
-      videoSegmentIndex < talksData.data.segments.length
+      videoSegmentIndex < talksData.data.segments.length &&
+      referencedTalkTitle !== null
     ) {
       const selectedSegment = talksData.data.segments[videoSegmentIndex];
       
-      if (selectedSegment?.videoUrl) {
-        videoPlayer = {
-          talkId: selectedSegment.talkId,
-          title: selectedSegment.talkTitle,
-          videoUrl: selectedSegment.videoUrl,
-          startTime: selectedSegment.startTime,
-        };
-        console.log("[v0] Including video player for segment", videoSegmentIndex, "- talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
+      // Validate that the referenced talk title matches the selected segment
+      // This prevents showing videos from the wrong talk
+      if (selectedSegment?.videoUrl && 
+          selectedSegment?.talkTitle &&
+          referencedTalkTitle &&
+          selectedSegment.talkTitle.toLowerCase() === referencedTalkTitle.toLowerCase()) {
+        
+        // Additional validation: check if talk title is mentioned in the response text
+        const responseLower = aiResponse.text.toLowerCase();
+        const talkTitleLower = selectedSegment.talkTitle.toLowerCase();
+        
+        if (responseLower.includes(talkTitleLower)) {
+          videoPlayer = {
+            talkId: selectedSegment.talkId,
+            title: selectedSegment.talkTitle,
+            videoUrl: selectedSegment.videoUrl,
+            startTime: selectedSegment.startTime,
+          };
+          console.log("[v0] ✅ Including video player for segment", videoSegmentIndex, "- talk:", selectedSegment.talkTitle, "timestamp:", selectedSegment.startTime);
+        } else {
+          console.log("[v0] ❌ Talk title not mentioned in response text, skipping video player");
+        }
+      } else if (!selectedSegment?.videoUrl) {
+        console.log("[v0] ❌ Selected segment has no video URL");
       } else {
-        console.log("[v0] Selected segment", videoSegmentIndex, "has no video URL");
+        console.log("[v0] ❌ Talk title mismatch - Referenced:", referencedTalkTitle, "vs Selected:", selectedSegment?.talkTitle);
       }
     } else {
       if (videoSegmentIndex === null) {
         console.log("[v0] No video player - AI indicated no specific segment (videoSegmentIndex: null)");
+      } else if (referencedTalkTitle === null) {
+        console.log("[v0] No video player - AI did not provide referencedTalkTitle");
       } else {
         console.log("[v0] No video player - invalid segment index or no segments available");
       }
